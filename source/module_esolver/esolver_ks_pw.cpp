@@ -28,6 +28,7 @@
 #include "module_hsolver/kernels/dngvd_op.h"
 #include "module_hsolver/kernels/math_kernel_op.h"
 #include "module_io/berryphase.h"
+#include "module_io/cal_ldos.h"
 #include "module_io/cube_io.h"
 #include "module_io/get_pchg_pw.h"
 #include "module_io/input_conv.h"
@@ -895,6 +896,19 @@ void ESolver_KS_PW<T, Device>::after_all_runners(UnitCell& ucell)
             GlobalV::ofs_running << " Fermi energy (spin = 2) is " << this->pelec->eferm.ef_dw << " Rydberg"
                                  << std::endl;
         }
+    }
+
+    if (PARAM.inp.out_dos == 4)
+    {
+        ModuleIO::cal_ldos(this->pw_wfc,
+                           (psi::Psi<std::complex<double>>*) this->psi,
+                           this->Pgrid,
+                           ucell,
+                           this->pelec->ekb,
+                           this->kv.wk,
+                           this->kv.get_nks(),
+                           this->pelec->eferm.ef,
+                           PARAM.inp.dos_emax_ev);
     }
 
     //! 4) Print out band structure information
