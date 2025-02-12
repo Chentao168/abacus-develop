@@ -134,7 +134,7 @@ class Charge
 
 	  /**
 	   * @brief 	Reduce among different pools 
-     *          If NPROC_IN_POOLs are all the same, use GlobalV::INTER_POOL
+     *          If NPROC_IN_POOLs are all the same, use GlobalV::KP_WORLD
      *          else, gather rho in a POOL, and then reduce among different POOLs
 	   * 
 	   * @param array_rho f(rho): an array [nrxx]
@@ -144,10 +144,10 @@ class Charge
     void set_omega(double* omega_in){this->omega_ = omega_in;};
 
     // mohan add 2021-02-20
-    int nrxx; // number of r vectors in this processor
-    int nxyz; // total nuber of r vectors
-    int ngmc; // number of g vectors in this processor
-    int nspin; // number of spins
+    int nrxx=0; // number of r vectors in this processor
+    int nxyz = 0; // total number of r vectors
+    int ngmc=0; // number of g vectors in this processor
+    int nspin=0; // number of spins
     ModulePW::PW_Basis* rhopw = nullptr;// When double_grid is used, rhopw = rhodpw (dense grid)
     bool cal_elf = false; // whether to calculate electron localization function (ELF)
   private:
@@ -161,7 +161,6 @@ class Charge
     bool allocate_rho_final_scf; // LiuXh add 20180606
 #ifdef __MPI
   private:
-    bool use_intel_pool = false; //use INTER_POOL when NPROC_IN_POOLs are all the same
     int *rec = nullptr; //The number of elements each process should receive into the receive buffer.
     int *dis = nullptr; //The displacement (relative to recvbuf) for each process in the receive buffer.
 #endif

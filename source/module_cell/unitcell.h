@@ -78,7 +78,6 @@ class UnitCell {
   private:
     std::vector<int> iat2iwt; // iat ==> iwt, the first global index for orbital of this atom
     int npol = 1; // number of spin polarizations, initialized in set_iat2iwt
-    const int test_unitcell = 0;
                   // ----------------- END of iat2iwt part -----------------
 
   public:
@@ -200,30 +199,18 @@ class UnitCell {
     void print_cell(std::ofstream& ofs) const;
     void print_cell_xyz(const std::string& fn) const;
 
-    void update_pos_tau(const double* pos);
-    void update_pos_taud(const ModuleBase::Vector3<double>* posd_in);
-    void update_pos_taud(double* posd_in);
-    void update_vel(const ModuleBase::Vector3<double>* vel_in);
-    void periodic_boundary_adjustment();
-    void bcast_atoms_tau();
     bool judge_big_cell() const;
 
     void update_stress(ModuleBase::matrix& scs); // updates stress
     void update_force(ModuleBase::matrix& fcs);  // updates force in Atom
 
-    double* atom_mass = nullptr;
-    std::string* atom_label = new std::string[1];
-    std::string* pseudo_fn = new std::string[1];
-    std::string* pseudo_type = new std::string[1]; // pseudopotential types for each elements,
-                                                   // sunliang added 2022-09-15.
-    std::string* orbital_fn = nullptr;  // filenames of orbitals, liuyu add 2022-10-19
-    std::string
-        descriptor_file; // filenames of descriptor_file, liuyu add 2023-04-06
+    std::vector<double>      atom_mass;
+    std::vector<std::string> atom_label;
+    std::vector<std::string> pseudo_fn;
+    std::vector<std::string> pseudo_type;
 
-#ifdef __MPI
-    void bcast_unitcell();
-    void bcast_unitcell2();
-#endif
+    std::vector<std::string> orbital_fn;  // filenames of orbitals, liuyu add 2022-10-19
+    std::string  descriptor_file; // filenames of descriptor_file, liuyu add 2023-04-06
 
     void set_iat2itia();
 
@@ -243,10 +230,6 @@ class UnitCell {
                        std::string& orb_file,
                        std::ofstream& ofs_running,
                        Atom* atom);
-    int read_atom_species(
-        std::ifstream& ifa,
-        std::ofstream&
-            ofs_running); // read in the atom information for each type of atom
     bool read_atom_positions(
         std::ifstream& ifpos,
         std::ofstream& ofs_running,
@@ -277,11 +260,8 @@ class UnitCell {
                          const bool& dpks_desc = false,
                          const int& iproc = 0) const;
     void check_dtau();
-    void setup_cell_after_vc(std::ofstream& log); // LiuXh add 20180515
-
     // for constrained vc-relaxation where type of lattice
     // is fixed, adjust the lattice vectors
-    void remake_cell();
 
     //================================================================
     // cal_natomwfc : calculate total number of atomic wavefunctions
@@ -291,7 +271,6 @@ class UnitCell {
     void cal_nwfc(std::ofstream& log);
     void cal_meshx();
     void cal_natomwfc(std::ofstream& log);
-    bool check_tau() const; // mohan add 2011-03-03
     bool if_atoms_can_move() const;
     bool if_cell_can_change() const;
     void setup(const std::string& latname_in,

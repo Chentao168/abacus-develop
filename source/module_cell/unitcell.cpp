@@ -7,8 +7,9 @@
 #include "module_base/global_function.h"
 #include "module_base/global_variable.h"
 #include "unitcell.h"
+#include "bcast_cell.h"
 #include "module_parameter/parameter.h"
-
+#include "read_stru.h"
 #ifdef __LCAO
 #include "../module_basis/module_ao/ORB_read.h" // to use 'ORB' -- mohan 2021-01-30
 #endif
@@ -22,125 +23,21 @@
 #ifdef USE_PAW
 #include "module_cell/module_paw/paw_cell.h"
 #endif
-#ifdef __EXX
-#include "module_hamilt_pw/hamilt_pwdft/global.h"
-#include "module_ri/serialization_cereal.h"
-#endif
 
+
+#include "update_cell.h"
 UnitCell::UnitCell() {
-    if (test_unitcell) {
-        ModuleBase::TITLE("unitcell", "Constructor");
-}
     itia2iat.create(1, 1);
 }
 
 UnitCell::~UnitCell() {
-    delete[] atom_label;
-    delete[] atom_mass;
-    delete[] pseudo_fn;
-    delete[] pseudo_type;
-    delete[] orbital_fn;
     if (set_atom_flag) {
         delete[] atoms;
     }
 }
 
-#include "module_base/parallel_common.h"
-#ifdef __MPI
-void UnitCell::bcast_unitcell() {
-    if (test_unitcell) {
-        ModuleBase::TITLE("UnitCell", "bcast_unitcell");
-}
-    Parallel_Common::bcast_string(Coordinate);
-    Parallel_Common::bcast_int(nat);
-
-    Parallel_Common::bcast_double(lat0);
-    Parallel_Common::bcast_double(lat0_angstrom);
-    Parallel_Common::bcast_double(tpiba);
-    Parallel_Common::bcast_double(tpiba2);
-
-    // distribute lattice vectors.
-    Parallel_Common::bcast_double(latvec.e11);
-    Parallel_Common::bcast_double(latvec.e12);
-    Parallel_Common::bcast_double(latvec.e13);
-    Parallel_Common::bcast_double(latvec.e21);
-    Parallel_Common::bcast_double(latvec.e22);
-    Parallel_Common::bcast_double(latvec.e23);
-    Parallel_Common::bcast_double(latvec.e31);
-    Parallel_Common::bcast_double(latvec.e32);
-    Parallel_Common::bcast_double(latvec.e33);
-
-    Parallel_Common::bcast_int(lc[0]);
-    Parallel_Common::bcast_int(lc[1]);
-    Parallel_Common::bcast_int(lc[2]);
-
-    if(this->orbital_fn == nullptr)
-    {
-        this->orbital_fn = new std::string[ntype];
-    }
-    for (int i = 0; i < ntype; i++)
-    {
-        Parallel_Common::bcast_string(orbital_fn[i]);
-    }
-
-    // distribute lattice vectors.
-    Parallel_Common::bcast_double(a1.x);
-    Parallel_Common::bcast_double(a1.y);
-    Parallel_Common::bcast_double(a1.z);
-    Parallel_Common::bcast_double(a2.x);
-    Parallel_Common::bcast_double(a2.y);
-    Parallel_Common::bcast_double(a2.z);
-    Parallel_Common::bcast_double(a3.x);
-    Parallel_Common::bcast_double(a3.y);
-    Parallel_Common::bcast_double(a3.z);
-
-    // distribute latcenter
-    Parallel_Common::bcast_double(latcenter.x);
-    Parallel_Common::bcast_double(latcenter.y);
-    Parallel_Common::bcast_double(latcenter.z);
-
-    // distribute superlattice vectors.
-    Parallel_Common::bcast_double(latvec_supercell.e11);
-    Parallel_Common::bcast_double(latvec_supercell.e12);
-    Parallel_Common::bcast_double(latvec_supercell.e13);
-    Parallel_Common::bcast_double(latvec_supercell.e21);
-    Parallel_Common::bcast_double(latvec_supercell.e22);
-    Parallel_Common::bcast_double(latvec_supercell.e23);
-    Parallel_Common::bcast_double(latvec_supercell.e31);
-    Parallel_Common::bcast_double(latvec_supercell.e32);
-    Parallel_Common::bcast_double(latvec_supercell.e33);
-    Parallel_Common::bcast_double(magnet.start_magnetization, ntype);
-
-    if (PARAM.inp.nspin == 4) {
-        Parallel_Common::bcast_double(magnet.ux_[0]);
-        Parallel_Common::bcast_double(magnet.ux_[1]);
-        Parallel_Common::bcast_double(magnet.ux_[2]);
-    }
-
-    for (int i = 0; i < ntype; i++) {
-        atoms[i].bcast_atom(); // init tau and mbl array
-    }
-
-#ifdef __EXX
-    ModuleBase::bcast_data_cereal(GlobalC::exx_info.info_ri.files_abfs,
-                                  MPI_COMM_WORLD,
-                                  0);
-#endif
-    return;
-}
-
-void UnitCell::bcast_unitcell2() {
-    for (int i = 0; i < ntype; i++) {
-        atoms[i].bcast_atom2();
-    }
-    return;
-}
-#endif
 
 void UnitCell::print_cell(std::ofstream& ofs) const {
-    if (test_unitcell) {
-        ModuleBase::TITLE("UnitCell", "print_cell");
-}
 
     ModuleBase::GlobalFunc::OUT(ofs, "print_unitcell()");
 
@@ -164,8 +61,6 @@ void UnitCell::print_cell(std::ofstream& ofs) const {
 /*
 void UnitCell::print_cell_xyz(const std::string& fn) const
 {
-    if (test_unitcell)
-        ModuleBase::TITLE("UnitCell", "print_cell_xyz");
 
     if (GlobalV::MY_RANK != 0)
         return; // xiaohui add 2015-03-15
@@ -312,135 +207,6 @@ std::vector<ModuleBase::Vector3<int>> UnitCell::get_constrain() const
 	return constrain;
 }
 
-void UnitCell::update_pos_tau(const double* pos) {
-    int iat = 0;
-    for (int it = 0; it < this->ntype; it++) {
-        Atom* atom = &this->atoms[it];
-        for (int ia = 0; ia < atom->na; ia++) {
-            for (int ik = 0; ik < 3; ++ik) {
-                if (atom->mbl[ia][ik]) {
-                    atom->dis[ia][ik]
-                        = pos[3 * iat + ik] / this->lat0 - atom->tau[ia][ik];
-                    atom->tau[ia][ik] = pos[3 * iat + ik] / this->lat0;
-                }
-            }
-
-            // the direct coordinates also need to be updated.
-            atom->dis[ia] = atom->dis[ia] * this->GT;
-            atom->taud[ia] = atom->tau[ia] * this->GT;
-            iat++;
-        }
-    }
-    assert(iat == this->nat);
-    this->periodic_boundary_adjustment();
-    this->bcast_atoms_tau();
-}
-
-void UnitCell::update_pos_taud(double* posd_in) {
-    int iat = 0;
-    for (int it = 0; it < this->ntype; it++) {
-        Atom* atom = &this->atoms[it];
-        for (int ia = 0; ia < atom->na; ia++) {
-            for (int ik = 0; ik < 3; ++ik) {
-                atom->taud[ia][ik] += posd_in[3 * iat + ik];
-                atom->dis[ia][ik] = posd_in[3 * iat + ik];
-            }
-            iat++;
-        }
-    }
-    assert(iat == this->nat);
-    this->periodic_boundary_adjustment();
-    this->bcast_atoms_tau();
-}
-
-// posd_in is atomic displacements here  liuyu 2023-03-22
-void UnitCell::update_pos_taud(const ModuleBase::Vector3<double>* posd_in) {
-    int iat = 0;
-    for (int it = 0; it < this->ntype; it++) {
-        Atom* atom = &this->atoms[it];
-        for (int ia = 0; ia < atom->na; ia++) {
-            for (int ik = 0; ik < 3; ++ik) {
-                atom->taud[ia][ik] += posd_in[iat][ik];
-                atom->dis[ia][ik] = posd_in[iat][ik];
-            }
-            iat++;
-        }
-    }
-    assert(iat == this->nat);
-    this->periodic_boundary_adjustment();
-    this->bcast_atoms_tau();
-}
-
-void UnitCell::update_vel(const ModuleBase::Vector3<double>* vel_in) {
-    int iat = 0;
-    for (int it = 0; it < this->ntype; ++it) {
-        Atom* atom = &this->atoms[it];
-        for (int ia = 0; ia < atom->na; ++ia) {
-            this->atoms[it].vel[ia] = vel_in[iat];
-            ++iat;
-        }
-    }
-    assert(iat == this->nat);
-}
-
-void UnitCell::periodic_boundary_adjustment() {
-    //----------------------------------------------
-    // because of the periodic boundary condition
-    // we need to adjust the atom positions,
-    // first adjust direct coordinates,
-    // then update them into cartesian coordinates,
-    //----------------------------------------------
-    for (int it = 0; it < this->ntype; it++) {
-        Atom* atom = &this->atoms[it];
-        for (int ia = 0; ia < atom->na; ia++) {
-            // mohan update 2011-03-21
-            if (atom->taud[ia].x < 0) {
-                atom->taud[ia].x += 1.0;
-}
-            if (atom->taud[ia].y < 0) {
-                atom->taud[ia].y += 1.0;
-}
-            if (atom->taud[ia].z < 0) {
-                atom->taud[ia].z += 1.0;
-}
-            if (atom->taud[ia].x >= 1.0) {
-                atom->taud[ia].x -= 1.0;
-}
-            if (atom->taud[ia].y >= 1.0) {
-                atom->taud[ia].y -= 1.0;
-}
-            if (atom->taud[ia].z >= 1.0) {
-                atom->taud[ia].z -= 1.0;
-}
-
-            if (atom->taud[ia].x < 0 || atom->taud[ia].y < 0
-                || atom->taud[ia].z < 0 || atom->taud[ia].x >= 1.0
-                || atom->taud[ia].y >= 1.0 || atom->taud[ia].z >= 1.0) {
-                GlobalV::ofs_warning << " it=" << it + 1 << " ia=" << ia + 1
-                                     << std::endl;
-                GlobalV::ofs_warning << "d=" << atom->taud[ia].x << " "
-                                     << atom->taud[ia].y << " "
-                                     << atom->taud[ia].z << std::endl;
-                ModuleBase::WARNING_QUIT(
-                    "Ions_Move_Basic::move_ions",
-                    "the movement of atom is larger than the length of cell.");
-            }
-
-            atom->tau[ia] = atom->taud[ia] * this->latvec;
-        }
-    }
-    return;
-}
-
-void UnitCell::bcast_atoms_tau() {
-#ifdef __MPI
-    MPI_Barrier(MPI_COMM_WORLD);
-    for (int i = 0; i < ntype; i++) {
-        atoms[i].bcast_atom(); // bcast tau array
-    }
-#endif
-}
-
 //==============================================================
 // Calculate various lattice related quantities for given latvec
 //==============================================================
@@ -462,16 +228,22 @@ void UnitCell::setup_cell(const std::string& fn, std::ofstream& log) {
     bool ok2 = true;
 
     // (3) read in atom information
+    this->atom_mass.resize(ntype);
+    this->atom_label.resize(ntype);
+    this->pseudo_fn.resize(ntype);
+    this->pseudo_type.resize(ntype);
+    this->orbital_fn.resize(ntype);
     if (GlobalV::MY_RANK == 0) {
         // open "atom_unitcell" file.
         std::ifstream ifa(fn.c_str(), std::ios::in);
-        if (!ifa) {
+        if (!ifa) 
+        {
             GlobalV::ofs_warning << fn;
             ok = false;
         }
 
-        if (ok) {
-
+        if (ok) 
+        {
             log << "\n\n\n\n";
             log << " >>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>"
                    ">>>>>>>>>>>>"
@@ -518,8 +290,11 @@ void UnitCell::setup_cell(const std::string& fn, std::ofstream& log) {
             //========================
             // call read_atom_species
             //========================
-            const int error = this->read_atom_species(ifa, log);
-
+            const bool read_atom_species = unitcell::read_atom_species(ifa, log ,*this);
+            //========================
+            // call read_lattice_constant
+            //========================
+            const bool read_lattice_constant = unitcell::read_lattice_constant(ifa, log ,this->lat);
             //==========================
             // call read_atom_positions
             //==========================
@@ -541,7 +316,7 @@ void UnitCell::setup_cell(const std::string& fn, std::ofstream& log) {
     }
 
 #ifdef __MPI
-    this->bcast_unitcell();
+    unitcell::bcast_unitcell(*this);
 #endif
 
     //========================================================
@@ -550,17 +325,26 @@ void UnitCell::setup_cell(const std::string& fn, std::ofstream& log) {
     // Firstly, latvec must be read in.
     //========================================================
     assert(lat0 > 0.0);
-    this->omega = std::abs(latvec.Det()) * this->lat0 * lat0 * lat0;
-    if (this->omega <= 0) {
-        std::cout << "The volume is negative: " << this->omega << std::endl;
-        ModuleBase::WARNING_QUIT("setup_cell", "omega <= 0 .");
-    } else {
+    this->omega = latvec.Det() * this->lat0 * lat0 * lat0;
+    if (this->omega < 0)
+    {
+        std::cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" << std::endl;
+        std::cout << " Warning: The lattice vector is left-handed; a right-handed vector is prefered." << std::endl;
+        std::cout << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" << std::endl;
+        GlobalV::ofs_warning << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" << std::endl;
+        GlobalV::ofs_warning << " Warning: The lattice vector is left-handed; a right-handed vector is prefered." << std::endl;
+        GlobalV::ofs_warning << "%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%" << std::endl;
+        this->omega = std::abs(this->omega);
+    }
+    else if (this->omega == 0)
+    {
+        ModuleBase::WARNING_QUIT("setup_cell", "The volume is zero.");
+    }
+    else
+    {
         log << std::endl;
         ModuleBase::GlobalFunc::OUT(log, "Volume (Bohr^3)", this->omega);
-        ModuleBase::GlobalFunc::OUT(log,
-                                    "Volume (A^3)",
-                                    this->omega
-                                        * pow(ModuleBase::BOHR_TO_A, 3));
+        ModuleBase::GlobalFunc::OUT(log, "Volume (A^3)", this->omega * pow(ModuleBase::BOHR_TO_A, 3));
     }
 
     //==========================================================
@@ -719,6 +503,7 @@ void UnitCell::cal_nwfc(std::ofstream& log) {
     //========================
     this->lmax = 0;
     this->nmax = 0;
+    this->nmax_total = 0;
     for (int it = 0; it < ntype; it++) {
         lmax = std::max(lmax, atoms[it].nwl);
         for (int l = 0; l < atoms[it].nwl + 1; l++) {
@@ -761,8 +546,7 @@ void UnitCell::cal_nwfc(std::ofstream& log) {
     // Use localized basis
     //=====================
     if ((PARAM.inp.basis_type == "lcao") || (PARAM.inp.basis_type == "lcao_in_pw")
-        || ((PARAM.inp.basis_type == "pw") && (PARAM.inp.psi_initializer)
-            && (PARAM.inp.init_wfc.substr(0, 3) == "nao")
+        || ((PARAM.inp.basis_type == "pw") && (PARAM.inp.init_wfc.substr(0, 3) == "nao")
             && (PARAM.inp.esolver_type == "ksdft"))) // xiaohui add 2013-09-02
     {
         ModuleBase::GlobalFunc::AUTO_SET("NBANDS", PARAM.inp.nbands);
@@ -863,72 +647,6 @@ void UnitCell::cal_natomwfc(std::ofstream& log) {
     return;
 }
 
-// LiuXh add a new function here,
-// 20180515
-void UnitCell::setup_cell_after_vc(std::ofstream& log) {
-    ModuleBase::TITLE("UnitCell", "setup_cell_after_vc");
-    assert(lat0 > 0.0);
-    this->omega = std::abs(latvec.Det()) * this->lat0 * lat0 * lat0;
-    if (this->omega <= 0) {
-        ModuleBase::WARNING_QUIT("setup_cell_after_vc", "omega <= 0 .");
-    } else {
-        log << std::endl;
-        ModuleBase::GlobalFunc::OUT(log, "Volume (Bohr^3)", this->omega);
-        ModuleBase::GlobalFunc::OUT(log,
-                                    "Volume (A^3)",
-                                    this->omega
-                                        * pow(ModuleBase::BOHR_TO_A, 3));
-    }
-
-    lat0_angstrom = lat0 * 0.529177;
-    tpiba = ModuleBase::TWO_PI / lat0;
-    tpiba2 = tpiba * tpiba;
-
-    // lattice vectors in another form.
-    a1.x = latvec.e11;
-    a1.y = latvec.e12;
-    a1.z = latvec.e13;
-
-    a2.x = latvec.e21;
-    a2.y = latvec.e22;
-    a2.z = latvec.e23;
-
-    a3.x = latvec.e31;
-    a3.y = latvec.e32;
-    a3.z = latvec.e33;
-
-    //==========================================================
-    // Calculate recip. lattice vectors and dot products
-    // latvec has the unit of lat0, but G has the unit 2Pi/lat0
-    //==========================================================
-    this->GT = latvec.Inverse();
-    this->G = GT.Transpose();
-    this->GGT = G * GT;
-    this->invGGT = GGT.Inverse();
-
-    for (int it = 0; it < ntype; it++) {
-        Atom* atom = &atoms[it];
-        for (int ia = 0; ia < atom->na; ia++) {
-            atom->tau[ia] = atom->taud[ia] * latvec;
-        }
-    }
-
-#ifdef __MPI
-    this->bcast_unitcell();
-#endif
-
-    log << std::endl;
-    output::printM3(log,
-                    "Lattice vectors: (Cartesian coordinate: in unit of a_0)",
-                    latvec);
-    output::printM3(
-        log,
-        "Reciprocal vectors: (Cartesian coordinate: in unit of 2 pi/a_0)",
-        G);
-
-    return;
-}
-
 // check if any atom can be moved
 bool UnitCell::if_atoms_can_move() const {
     for (int it = 0; it < this->ntype; it++) {
@@ -1020,286 +738,9 @@ void UnitCell::setup(const std::string& latname_in,
     return;
 }
 
-void UnitCell::remake_cell() {
-    ModuleBase::TITLE("UnitCell", "rmake_cell");
-
-    // The idea is as follows: for each type of lattice, first calculate
-    // from current latvec the lattice parameters, then use the parameters
-    // to reconstruct latvec
-
-    if (latName == "none") {
-        ModuleBase::WARNING_QUIT(
-            "UnitCell",
-            "to use fixed_ibrav, latname must be provided");
-    } else if (latName == "sc") // ibrav = 1
-    {
-        double celldm = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                  + pow(latvec.e13, 2));
-
-        latvec.Zero();
-        latvec.e11 = latvec.e22 = latvec.e33 = celldm;
-    } else if (latName == "fcc") // ibrav = 2
-    {
-        double celldm = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                  + pow(latvec.e13, 2))
-                        / std::sqrt(2.0);
-
-        latvec.e11 = -celldm;
-        latvec.e12 = 0.0;
-        latvec.e13 = celldm;
-        latvec.e21 = 0.0;
-        latvec.e22 = celldm;
-        latvec.e23 = celldm;
-        latvec.e31 = -celldm;
-        latvec.e32 = celldm;
-        latvec.e33 = 0.0;
-    } else if (latName == "bcc") // ibrav = 3
-    {
-        double celldm = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                  + pow(latvec.e13, 2))
-                        / std::sqrt(3.0);
-
-        latvec.e11 = celldm;
-        latvec.e12 = celldm;
-        latvec.e13 = celldm;
-        latvec.e21 = -celldm;
-        latvec.e22 = celldm;
-        latvec.e23 = celldm;
-        latvec.e31 = -celldm;
-        latvec.e32 = -celldm;
-        latvec.e33 = celldm;
-    } else if (latName == "hexagonal") // ibrav = 4
-    {
-        double celldm1 = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                   + pow(latvec.e13, 2));
-        double celldm3 = std::sqrt(pow(latvec.e31, 2) + pow(latvec.e32, 2)
-                                   + pow(latvec.e33, 2));
-        double e22 = sqrt(3.0) / 2.0;
-
-        latvec.e11 = celldm1;
-        latvec.e12 = 0.0;
-        latvec.e13 = 0.0;
-        latvec.e21 = -0.5 * celldm1;
-        latvec.e22 = celldm1 * e22;
-        latvec.e23 = 0.0;
-        latvec.e31 = 0.0;
-        latvec.e32 = 0.0;
-        latvec.e33 = celldm3;
-    } else if (latName == "trigonal") // ibrav = 5
-    {
-        double celldm1 = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                   + pow(latvec.e13, 2));
-        double celldm2 = std::sqrt(pow(latvec.e21, 2) + pow(latvec.e22, 2)
-                                   + pow(latvec.e23, 2));
-        double celldm12 = (latvec.e11 * latvec.e21 + latvec.e12 * latvec.e22
-                           + latvec.e13 * latvec.e23);
-        double cos12 = celldm12 / celldm1 / celldm2;
-
-        if (cos12 <= -0.5 || cos12 >= 1.0) {
-            ModuleBase::WARNING_QUIT("unitcell", "wrong cos12!");
-        }
-        double t1 = sqrt(1.0 + 2.0 * cos12);
-        double t2 = sqrt(1.0 - cos12);
-
-        double e11 = celldm1 * t2 / sqrt(2.0);
-        double e12 = -celldm1 * t2 / sqrt(6.0);
-        double e13 = celldm1 * t1 / sqrt(3.0);
-        double e22 = celldm1 * sqrt(2.0) * t2 / sqrt(3.0);
-
-        latvec.e11 = e11;
-        latvec.e12 = e12;
-        latvec.e13 = e13;
-        latvec.e21 = 0.0;
-        latvec.e22 = e22;
-        latvec.e23 = e13;
-        latvec.e31 = -e11;
-        latvec.e32 = e12;
-        latvec.e33 = e13;
-    } else if (latName == "st") // ibrav = 6
-    {
-        double celldm1 = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                   + pow(latvec.e13, 2));
-        double celldm3 = std::sqrt(pow(latvec.e31, 2) + pow(latvec.e32, 2)
-                                   + pow(latvec.e33, 2));
-        latvec.e11 = celldm1;
-        latvec.e12 = 0.0;
-        latvec.e13 = 0.0;
-        latvec.e21 = 0.0;
-        latvec.e22 = celldm1;
-        latvec.e23 = 0.0;
-        latvec.e31 = 0.0;
-        latvec.e32 = 0.0;
-        latvec.e33 = celldm3;
-    } else if (latName == "bct") // ibrav = 7
-    {
-        double celldm1 = std::abs(latvec.e11);
-        double celldm2 = std::abs(latvec.e13);
-
-        latvec.e11 = celldm1;
-        latvec.e12 = -celldm1;
-        latvec.e13 = celldm2;
-        latvec.e21 = celldm1;
-        latvec.e22 = celldm1;
-        latvec.e23 = celldm2;
-        latvec.e31 = -celldm1;
-        latvec.e32 = -celldm1;
-        latvec.e33 = celldm2;
-    } else if (latName == "so") // ibrav = 8
-    {
-        double celldm1 = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                   + pow(latvec.e13, 2));
-        double celldm2 = std::sqrt(pow(latvec.e21, 2) + pow(latvec.e22, 2)
-                                   + pow(latvec.e23, 2));
-        double celldm3 = std::sqrt(pow(latvec.e31, 2) + pow(latvec.e32, 2)
-                                   + pow(latvec.e33, 2));
-
-        latvec.e11 = celldm1;
-        latvec.e12 = 0.0;
-        latvec.e13 = 0.0;
-        latvec.e21 = 0.0;
-        latvec.e22 = celldm2;
-        latvec.e23 = 0.0;
-        latvec.e31 = 0.0;
-        latvec.e32 = 0.0;
-        latvec.e33 = celldm3;
-    } else if (latName == "baco") // ibrav = 9
-    {
-        double celldm1 = std::abs(latvec.e11);
-        double celldm2 = std::abs(latvec.e22);
-        double celldm3 = std::abs(latvec.e33);
-
-        latvec.e11 = celldm1;
-        latvec.e12 = celldm2;
-        latvec.e13 = 0.0;
-        latvec.e21 = -celldm1;
-        latvec.e22 = celldm2;
-        latvec.e23 = 0.0;
-        latvec.e31 = 0.0;
-        latvec.e32 = 0.0;
-        latvec.e33 = celldm3;
-    } else if (latName == "fco") // ibrav = 10
-    {
-        double celldm1 = std::abs(latvec.e11);
-        double celldm2 = std::abs(latvec.e22);
-        double celldm3 = std::abs(latvec.e33);
-
-        latvec.e11 = celldm1;
-        latvec.e12 = 0.0;
-        latvec.e13 = celldm3;
-        latvec.e21 = celldm1;
-        latvec.e22 = celldm2;
-        latvec.e23 = 0.0;
-        latvec.e31 = 0.0;
-        latvec.e32 = celldm2;
-        latvec.e33 = celldm3;
-    } else if (latName == "bco") // ibrav = 11
-    {
-        double celldm1 = std::abs(latvec.e11);
-        double celldm2 = std::abs(latvec.e12);
-        double celldm3 = std::abs(latvec.e13);
-
-        latvec.e11 = celldm1;
-        latvec.e12 = celldm2;
-        latvec.e13 = celldm3;
-        latvec.e21 = -celldm1;
-        latvec.e22 = celldm2;
-        latvec.e23 = celldm3;
-        latvec.e31 = -celldm1;
-        latvec.e32 = -celldm2;
-        latvec.e33 = celldm3;
-    } else if (latName == "sm") // ibrav = 12
-    {
-        double celldm1 = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                   + pow(latvec.e13, 2));
-        double celldm2 = std::sqrt(pow(latvec.e21, 2) + pow(latvec.e22, 2)
-                                   + pow(latvec.e23, 2));
-        double celldm3 = std::sqrt(pow(latvec.e31, 2) + pow(latvec.e32, 2)
-                                   + pow(latvec.e33, 2));
-        double celldm12 = (latvec.e11 * latvec.e21 + latvec.e12 * latvec.e22
-                           + latvec.e13 * latvec.e23);
-        double cos12 = celldm12 / celldm1 / celldm2;
-
-        double e21 = celldm2 * cos12;
-        double e22 = celldm2 * std::sqrt(1.0 - cos12 * cos12);
-
-        latvec.e11 = celldm1;
-        latvec.e12 = 0.0;
-        latvec.e13 = 0.0;
-        latvec.e21 = e21;
-        latvec.e22 = e22;
-        latvec.e23 = 0.0;
-        latvec.e31 = 0.0;
-        latvec.e32 = 0.0;
-        latvec.e33 = celldm3;
-    } else if (latName == "bacm") // ibrav = 13
-    {
-        double celldm1 = std::abs(latvec.e11);
-        double celldm2 = std::sqrt(pow(latvec.e21, 2) + pow(latvec.e22, 2)
-                                   + pow(latvec.e23, 2));
-        double celldm3 = std::abs(latvec.e13);
-
-        double cos12 = latvec.e21 / celldm2;
-        if (cos12 >= 1.0) {
-            ModuleBase::WARNING_QUIT("unitcell", "wrong cos12!");
-        }
-
-        double e21 = celldm2 * cos12;
-        double e22 = celldm2 * std::sqrt(1.0 - cos12 * cos12);
-
-        latvec.e11 = celldm1;
-        latvec.e12 = 0.0;
-        latvec.e13 = -celldm3;
-        latvec.e21 = e21;
-        latvec.e22 = e22;
-        latvec.e23 = 0.0;
-        latvec.e31 = celldm1;
-        latvec.e32 = 0.0;
-        latvec.e33 = celldm3;
-    } else if (latName == "triclinic") // ibrav = 14
-    {
-        double celldm1 = std::sqrt(pow(latvec.e11, 2) + pow(latvec.e12, 2)
-                                   + pow(latvec.e13, 2));
-        double celldm2 = std::sqrt(pow(latvec.e21, 2) + pow(latvec.e22, 2)
-                                   + pow(latvec.e23, 2));
-        double celldm3 = std::sqrt(pow(latvec.e31, 2) + pow(latvec.e32, 2)
-                                   + pow(latvec.e33, 2));
-        double celldm12 = (latvec.e11 * latvec.e21 + latvec.e12 * latvec.e22
-                           + latvec.e13 * latvec.e23);
-        double cos12 = celldm12 / celldm1 / celldm2;
-        double celldm13 = (latvec.e11 * latvec.e31 + latvec.e12 * latvec.e32
-                           + latvec.e13 * latvec.e33);
-        double cos13 = celldm13 / celldm1 / celldm3;
-        double celldm23 = (latvec.e21 * latvec.e31 + latvec.e22 * latvec.e32
-                           + latvec.e23 * latvec.e33);
-        double cos23 = celldm23 / celldm2 / celldm3;
-
-        double sin12 = std::sqrt(1.0 - cos12 * cos12);
-        if (cos12 >= 1.0) {
-            ModuleBase::WARNING_QUIT("unitcell", "wrong cos12!");
-        }
-
-        latvec.e11 = celldm1;
-        latvec.e12 = 0.0;
-        latvec.e13 = 0.0;
-        latvec.e21 = celldm2 * cos12;
-        latvec.e22 = celldm2 * sin12;
-        latvec.e23 = 0.0;
-        latvec.e31 = celldm3 * cos13;
-        latvec.e32 = celldm3 * (cos23 - cos13 * cos12) / sin12;
-        double term = 1.0 + 2.0 * cos12 * cos13 * cos23 - cos12 * cos12
-                      - cos13 * cos13 - cos23 * cos23;
-        term = sqrt(term) / sin12;
-        latvec.e33 = celldm3 * term;
-    } else {
-        std::cout << "latname is : " << latName << std::endl;
-        ModuleBase::WARNING_QUIT("UnitCell::read_atom_species",
-                                 "latname not supported!");
-    }
-}
 
 void UnitCell::compare_atom_labels(std::string label1, std::string label2) {
-    if (label1
-        != label2) //'!( "Ag" == "Ag" || "47" == "47" || "Silver" == Silver" )'
+    if (label1!= label2) //'!( "Ag" == "Ag" || "47" == "47" || "Silver" == Silver" )'
     {
         atom_in ai;
         if (!(std::to_string(ai.atom_Z[label1]) == label2

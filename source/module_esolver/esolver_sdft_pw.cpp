@@ -78,13 +78,20 @@ void ESolver_SDFT_PW<T, Device>::before_all_runners(UnitCell& ucell, const Input
     // 4) allocate spaces for \sqrt(f(H))|chi> and |\tilde{chi}>
     size_t size = stowf.chi0->size();
     this->stowf.shchi
-        = new psi::Psi<T, Device>(this->kv.get_nks(), this->stowf.nchip_max, this->pw_wfc->npwk_max, this->kv.ngk.data());
+        = new psi::Psi<T, Device>(this->kv.get_nks(), 
+                                  this->stowf.nchip_max, 
+                                  this->pw_wfc->npwk_max, 
+                                  this->kv.ngk,
+                                  true);
     ModuleBase::Memory::record("SDFT::shchi", size * sizeof(T));
 
     if (PARAM.inp.nbands > 0)
     {
         this->stowf.chiortho
-            = new psi::Psi<T, Device>(this->kv.get_nks(), this->stowf.nchip_max, this->pw_wfc->npwk_max, this->kv.ngk.data());
+            = new psi::Psi<T, Device>(this->kv.get_nks(), 
+                                      this->stowf.nchip_max, 
+                                      this->pw_wfc->npwk_max, 
+                                      this->kv.ngk, true);
         ModuleBase::Memory::record("SDFT::chiortho", size * sizeof(T));
     }
 
@@ -191,7 +198,7 @@ void ESolver_SDFT_PW<T, Device>::hamilt2density_single(UnitCell& ucell, int iste
     // set_diagethr need it
     this->esolver_KS_ne = hsolver_pw_sdft_obj.stoiter.KS_ne;
 
-    if (GlobalV::MY_STOGROUP == 0)
+    if (PARAM.globalv.ks_run)
     {
         Symmetry_rho srho;
         for (int is = 0; is < PARAM.inp.nspin; is++)
@@ -210,7 +217,7 @@ void ESolver_SDFT_PW<T, Device>::hamilt2density_single(UnitCell& ucell, int iste
 #endif
     }
 #ifdef __MPI
-    MPI_Bcast(&(this->pelec->f_en.deband), 1, MPI_DOUBLE, 0, PARAPW_WORLD);
+    MPI_Bcast(&(this->pelec->f_en.deband), 1, MPI_DOUBLE, 0, BP_WORLD);
 #endif
     ModuleBase::timer::tick("ESolver_SDFT_PW", "hamilt2density");
 }
@@ -266,7 +273,7 @@ void ESolver_SDFT_PW<T, Device>::after_all_runners(UnitCell& ucell)
     GlobalV::ofs_running << std::setprecision(16);
     GlobalV::ofs_running << " !FINAL_ETOT_IS " << this->pelec->f_en.etot * ModuleBase::Ry_to_eV << " eV" << std::endl;
     GlobalV::ofs_running << " --------------------------------------------\n\n" << std::endl;
-    ModuleIO::write_istate_info(this->pelec->ekb, this->pelec->wg, this->kv, &(GlobalC::Pkpoints));
+    ModuleIO::write_istate_info(this->pelec->ekb, this->pelec->wg, this->kv);
 }
 
 template <>
@@ -277,7 +284,7 @@ void ESolver_SDFT_PW<std::complex<double>, base_device::DEVICE_CPU>::after_all_r
     GlobalV::ofs_running << std::setprecision(16);
     GlobalV::ofs_running << " !FINAL_ETOT_IS " << this->pelec->f_en.etot * ModuleBase::Ry_to_eV << " eV" << std::endl;
     GlobalV::ofs_running << " --------------------------------------------\n\n" << std::endl;
-    ModuleIO::write_istate_info(this->pelec->ekb, this->pelec->wg, this->kv, &(GlobalC::Pkpoints));
+    ModuleIO::write_istate_info(this->pelec->ekb, this->pelec->wg, this->kv);
 
     if (this->method_sto == 2)
     {

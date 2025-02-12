@@ -3,20 +3,13 @@
 #include "gmock/gmock.h"
 #include "gtest/gtest.h"
 #define private public
-#include "module_parameter/parameter.h"
-#undef private
+#include "module_cell/klist.h"
 #include "module_elecstate/elecstate.h"
-#include "module_elecstate/elecstate_getters.h"
+#include "module_elecstate/module_charge/charge.h"
 #include "module_elecstate/potentials/efield.h"
 #include "module_elecstate/potentials/gatefield.h"
-#include "module_elecstate/module_charge/charge.h"
-#include "module_cell/klist.h"
-K_Vectors::K_Vectors()
-{
-}
-K_Vectors::~K_Vectors()
-{
-}
+#include "module_hamilt_general/module_xc/xc_functional.h"
+#include "module_parameter/parameter.h"
 
 /***************************************************************
  *  mock functions
@@ -47,10 +40,9 @@ Charge::Charge()
 Charge::~Charge()
 {
 }
-int elecstate::get_xc_func_type()
-{
-    return 0;
-}
+
+int XC_Functional::func_type = 0;
+bool XC_Functional::ked_flag = false;
 
 /***************************************************************
  *  unit test of functions in elecstate_print.cpp
@@ -75,11 +67,15 @@ class ElecStatePrintTest : public ::testing::Test
     {
         p_klist = new K_Vectors;
         p_klist->set_nks(2);
+        p_klist->set_nkstot(2);
         p_klist->isk = {0, 1};
         p_klist->ngk = {100, 101};
         p_klist->kvec_c.resize(2);
         p_klist->kvec_c[0].set(0.1, 0.11, 0.111);
         p_klist->kvec_c[1].set(0.2, 0.22, 0.222);
+        p_klist->ik2iktot.resize(2);
+        p_klist->ik2iktot[0] = 0;
+        p_klist->ik2iktot[1] = 1;
         // initialize klist of elecstate
         elecstate.klist = p_klist;
         // initialize ekb of elecstate
@@ -100,6 +96,7 @@ class ElecStatePrintTest : public ::testing::Test
         ucell.magnet.tot_magnetization_nc[1] = 4.4;
         ucell.magnet.tot_magnetization_nc[2] = 5.5;
         PARAM.input.ks_solver = "dav";
+        PARAM.sys.log_file = "test.dat";
     }
     void TearDown()
     {
@@ -167,6 +164,7 @@ TEST_F(ElecStatePrintTest, PrintBand)
 {
     PARAM.input.nspin = 1;
     PARAM.input.nbands = 2;
+    PARAM.sys.nbands_l = 2;
     GlobalV::MY_RANK = 0;
     GlobalV::ofs_running.open("test.dat", std::ios::out);
     // print eigenvalue
@@ -348,6 +346,7 @@ TEST_F(ElecStatePrintTest, PrintEtotColorS2)
     PARAM.input.nspin = 2;
     GlobalV::MY_RANK = 0;
     elecstate.print_etot(ucell.magnet,converged, iter, scf_thr, scf_thr_kin, duration, printe, pw_diag_thr, avg_iter, print);
+    delete elecstate.charge;
 }
 
 TEST_F(ElecStatePrintTest, PrintEtotColorS4)
@@ -373,4 +372,5 @@ TEST_F(ElecStatePrintTest, PrintEtotColorS4)
     PARAM.input.noncolin = true;
     GlobalV::MY_RANK = 0;
     elecstate.print_etot(ucell.magnet,converged, iter, scf_thr, scf_thr_kin, duration, printe, pw_diag_thr, avg_iter, print);
+    delete elecstate.charge;
 }

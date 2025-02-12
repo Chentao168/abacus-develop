@@ -21,6 +21,7 @@ list(APPEND objects
     restart.cpp
     binstream.cpp
     write_wfc_pw.cpp
+    write_pao.cpp
     write_cube.cpp
     write_elecstat_pot.cpp
     write_elf.cpp

@@ -5,6 +5,11 @@
 // for grid integration
 #include "module_hamilt_lcao/module_gint/gint_gamma.h"
 #include "module_hamilt_lcao/module_gint/gint_k.h"
+#include "module_hamilt_lcao/module_gint/temp_gint/gint_info.h"
+#include "module_hamilt_lcao/module_gint/temp_gint/gint.h"
+#ifdef __DEEPKS
+#include "module_hamilt_lcao/module_deepks/LCAO_deepks.h"
+#endif
 #ifdef __EXX
 #include "module_ri/Exx_LRI_interface.h"
 #include "module_ri/Mix_DMk_2D.h"
@@ -19,13 +24,14 @@
 
 namespace LR
 {
-    template<typename T, typename TR>
-    class ESolver_LR;
+template <typename T, typename TR>
+class ESolver_LR;
 }
 namespace ModuleESolver
 {
 template <typename TK, typename TR>
-class ESolver_KS_LCAO : public ESolver_KS<TK> {
+class ESolver_KS_LCAO : public ESolver_KS<TK>
+{
   public:
     ESolver_KS_LCAO();
     ~ESolver_KS_LCAO();
@@ -73,7 +79,7 @@ class ESolver_KS_LCAO : public ESolver_KS<TK> {
 
     TwoCenterBundle two_center_bundle_;
 
-    rdmft::RDMFT<TK, TR> rdmft_solver;  // added by jghan for rdmft calculation, 2024-03-16
+    rdmft::RDMFT<TK, TR> rdmft_solver; // added by jghan for rdmft calculation, 2024-03-16
 
     // temporary introduced during removing GlobalC::ORB
     LCAO_Orbitals orb_;
@@ -91,6 +97,10 @@ class ESolver_KS_LCAO : public ESolver_KS<TK> {
 
     void beforesolver(const int istep);
     //---------------------------------------------------------------------
+
+#ifdef __DEEPKS
+    LCAO_Deepks ld;
+#endif
 
 #ifdef __EXX
     std::shared_ptr<Exx_LRI_Interface<TK, double>> exd = nullptr;

@@ -46,9 +46,6 @@ ESolver_KS<T, Device>::ESolver_KS()
     maxniter = PARAM.inp.scf_nmax;
     niter = maxniter;
 
-    // should not use GlobalV here, mohan 2024-05-12
-    out_freq_elec = PARAM.inp.out_freq_elec;
-
     // pw_rho = new ModuleBase::PW_Basis();
     // temporary, it will be removed
     std::string fft_device = PARAM.inp.device;
@@ -364,7 +361,7 @@ void ESolver_KS<T, Device>::hamilt2density(UnitCell& ucell, const int istep, con
     // Maybe in the future, density and wavefunctions should use different
     // parallel algorithms, in which they do not occupy all processors, for
     // example wavefunctions uses 20 processors while density uses 10.
-    if (GlobalV::MY_STOGROUP == 0)
+    if (PARAM.globalv.ks_run)
     {
         // double drho = this->estate.caldr2();
         // EState should be used after it is constructed.
@@ -553,7 +550,7 @@ void ESolver_KS<T, Device>::iter_finish(UnitCell& ucell, const int istep, int& i
                                        this->pelec->charge->rho,
                                        this->pelec->nelec_spin.data());
 
-    if (GlobalV::MY_STOGROUP == 0)
+    if (PARAM.globalv.ks_run)
     {
         // mixing will restart at this->p_chgmix->mixing_restart steps
         if (drho <= PARAM.inp.mixing_restart && PARAM.inp.mixing_restart > 0.0
@@ -637,9 +634,9 @@ void ESolver_KS<T, Device>::iter_finish(UnitCell& ucell, const int istep, int& i
     }
 
 #ifdef __MPI
-    MPI_Bcast(&drho, 1, MPI_DOUBLE, 0, PARAPW_WORLD);
-    MPI_Bcast(&this->conv_esolver, 1, MPI_DOUBLE, 0, PARAPW_WORLD);
-    MPI_Bcast(pelec->charge->rho[0], this->pw_rhod->nrxx, MPI_DOUBLE, 0, PARAPW_WORLD);
+    MPI_Bcast(&drho, 1, MPI_DOUBLE, 0, BP_WORLD);
+    MPI_Bcast(&this->conv_esolver, 1, MPI_DOUBLE, 0, BP_WORLD);
+    MPI_Bcast(pelec->charge->rho[0], this->pw_rhod->nrxx, MPI_DOUBLE, 0, BP_WORLD);
 #endif
 
     // update potential
@@ -669,10 +666,11 @@ void ESolver_KS<T, Device>::iter_finish(UnitCell& ucell, const int istep, int& i
 
     // get mtaGGA related parameters
     double dkin = 0.0; // for meta-GGA
-    if (XC_Functional::get_func_type() == 3 || XC_Functional::get_func_type() == 5)
+    if (XC_Functional::get_ked_flag())
     {
         dkin = p_chgmix->get_dkin(pelec->charge, PARAM.inp.nelec);
     }
+
     this->pelec->print_etot(ucell.magnet,this->conv_esolver, iter, drho, dkin, duration, PARAM.inp.printe, diag_ethr);
 
     // Json, need to be moved to somewhere else
@@ -693,45 +691,7 @@ void ESolver_KS<T, Device>::iter_finish(UnitCell& ucell, const int istep, int& i
         std::cout << " SCF restart after this step!" << std::endl;
     }
 
-    //! output charge density and density matrix
-    if (this->out_freq_elec && iter % this->out_freq_elec == 0)
-    {
-        for (int is = 0; is < PARAM.inp.nspin; is++)
-        {
-            double* data = nullptr;
-            if (PARAM.inp.dm_to_rho)
-            {
-                data = this->pelec->charge->rho[is];
-            }
-            else
-            {
-                data = this->pelec->charge->rho_save[is];
-            }
-            std::string fn = PARAM.globalv.global_out_dir + "/tmp_SPIN" + std::to_string(is + 1) + "_CHG.cube";
-            ModuleIO::write_vdata_palgrid(Pgrid,
-                                          data,
-                                          is,
-                                          PARAM.inp.nspin,
-                                          0,
-                                          fn,
-                                          this->pelec->eferm.get_efval(is),
-                                          &(ucell),
-                                          3,
-                                          1);
-            if (XC_Functional::get_func_type() == 3 || XC_Functional::get_func_type() == 5)
-            {
-                fn = PARAM.globalv.global_out_dir + "/tmp_SPIN" + std::to_string(is + 1) + "_TAU.cube";
-                ModuleIO::write_vdata_palgrid(Pgrid,
-                                              this->pelec->charge->kin_r_save[is],
-                                              is,
-                                              PARAM.inp.nspin,
-                                              0,
-                                              fn,
-                                              this->pelec->eferm.get_efval(is),
-                                              &(ucell));
-            }
-        }
-    }
+    ESolver_FP::iter_finish(ucell, istep, iter);
 }
 
 //! Something to do after SCF iterations when SCF is converged or comes to the max iter step.

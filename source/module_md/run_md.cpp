@@ -10,7 +10,7 @@
 #include "msst.h"
 #include "nhchain.h"
 #include "verlet.h"
-
+#include "module_cell/update_cell.h"
 namespace Run_MD
 {
 
@@ -97,14 +97,13 @@ void md_line(UnitCell& unit_in, ModuleESolver::ESolver* p_esolver, const Paramet
 
         if ((mdrun->step_ + mdrun->step_rst_) % param_in.mdp.md_restartfreq == 0)
         {
-            unit_in.update_vel(mdrun->vel);
+            unitcell::update_vel(mdrun->vel,unit_in.ntype,unit_in.nat,unit_in.atoms);
             std::stringstream file;
             file << PARAM.globalv.global_stru_dir << "STRU_MD_" << mdrun->step_ + mdrun->step_rst_;
             // changelog 20240509
             // because I move out the dependence on GlobalV from UnitCell::print_stru_file
             // so its parameter is calculated here
             bool need_orb = PARAM.inp.basis_type=="pw";
-            need_orb = need_orb && PARAM.inp.psi_initializer;
             need_orb = need_orb && PARAM.inp.init_wfc.substr(0, 3)=="nao";
             need_orb = need_orb || PARAM.inp.basis_type=="lcao";
             need_orb = need_orb || PARAM.inp.basis_type=="lcao_in_pw";
