@@ -187,7 +187,7 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
         }
 
         // Bandgap Part
-        if (PARAM.inp.deepks_bandgap)
+        if (PARAM.inp.deepks_bandgap == 1)
         {
             const int nocc = (PARAM.inp.nelec + 1) / 2;
             ModuleBase::matrix o_tot(nks, 1);
@@ -265,6 +265,128 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                 LCAO_deepks_io::save_matrix2npy(file_obase, o_tot, my_rank); // no scf, o_tot=o_base
             }                                                                // end deepks_scf == 0
         }                                                                    // end bandgap label
+
+        if (PARAM.inp.deepks_bandgap == 2)
+        {
+            const int nocc = (PARAM.inp.nelec + 1) / 2;
+            const int range = PARAM.inp.deepks_band_range[1] - PARAM.inp.deepks_band_range[0];
+            ModuleBase::matrix o_tot(nks, range);
+            for (int iks = 0; iks < nks; ++iks)
+            {
+                // record band gap for each k point (including spin)
+                const double
+                for (int ib = 0; ib < range; ++ib)
+                {
+                    if (ib + PARAM.inp.deepks_band_range[0] < -1)
+                    {
+                        o_tot(iks, ib) = ekb(iks, nocc + ib + PARAM.inp.deepks_band_range[0]) - ekb(iks, nocc - 1);
+                    }
+                    if (ib > -1)
+                    {
+                        o_tot(iks, ib - 1) = ekb(iks, nocc + ib + PARAM.inp.deepks_band_range[0]) - ekb(iks, nocc -1);
+                    }
+                }
+            }
+
+            const std::string file_otot = PARAM.globalv.global_out_dir + "deepks_otot.npy";
+            LCAO_deepks_io::save_matrix2npy(file_otot, o_tot, my_rank); // Unit: Ry
+
+            if (PARAM.inp.deepks_scf)
+            {
+                // 为 wg_hl 增加第 0 维度，大小为 range
+                std::vector<ModuleBase::matrix> wg_hl_range(range); // 第一维是 range
+                std::vector<std::vector<TH>> dm_bandgap_range(range); // 匹配新的维度
+
+                // Calculate O_delta
+                if constexpr (std::is_same<TK, double>::value) // for gamma only
+                {
+                    for (int ir = 0; ir < range; ++ir)
+                    {
+                        wg_hl_range[ir].create(nspin, PARAM.inp.nbands);
+                        dm_bandgap_range[ir].resize(nspin);
+                        for (int is = 0; is < nspin; ++is)
+                        {
+                            wg_hl_range[ir].zero_out();
+                            if (ir + PARAM.inp.deepks_band_range[0] < -1)
+                            {
+                                wg_hl_range[ir](is, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
+                                wg_hl_range[ir](is, nocc - 1) = -1.0;
+                                elecstate::cal_dm(ParaV, wg_hl_range[ir], psi, dm_bandgap_range[ir]);
+                            }
+                            if (ir + PARAM.inp.deepks_band_range[0] > -1)
+                            {
+                                wg_hl_range[ir - 1](is, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
+                                wg_hl_range[ir - 1](is, nocc - 1) = -1.0;
+                                elecstate::cal_dm(ParaV, wg_hl_range[ir - 1], psi, dm_bandgap_range[ir - 1]);
+                            }
+                        }
+                    }
+                }
+                else // for multi-k
+                {
+                    for (int ir = 0; ir < range; ++ir)
+                    {
+                        wg_hl_range[ir].create(nks, PARAM.inp.nbands);
+                        dm_bandgap_range[ir].resize(nks);
+                        for (int ik = 0; ik < nks; ik++)
+                        {
+                            wg_hl_range[ir].zero_out();
+                            if (ir + PARAM.inp.deepks_band_range[0] < -1)
+                            {
+                                wg_hl_range[ir](ik, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
+                                wg_hl_range[ir](ik, nocc - 1) = -1.0;
+                                elecstate::cal_dm(ParaV, wg_hl_range[ir], psi, dm_bandgap_range[ir]);
+                            }
+                            if (ir + PARAM.inp.deepks_band_range[0] > -1)
+                            {
+                                wg_hl_range[ir - 1](ik, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
+                                wg_hl_range[ir - 1](ik, nocc - 1) = -1.0;
+                                elecstate::cal_dm(ParaV, wg_hl_range[ir - 1], psi, dm_bandgap_range[ir - 1]);
+                            }
+                        }
+                    }
+                }
+
+                ModuleBase::matrix o_delta(nks, range);
+                torch::Tensor orbital_precalc;
+
+                for (int ir = 0; ir < range; ++ir)
+                {
+                    torch::Tensor orbital_precalc_temp
+                    DeePKS_domain::cal_orbital_precalc<TK, TH>(dm_bandgap_range[ir],
+                        lmaxd,
+                        inlmax,
+                        nat,
+                        nks,
+                        inl_l,
+                        kvec_d,
+                        phialpha,
+                        gevdm,
+                        inl_index,
+                        ucell,
+                        orb,
+                        *ParaV,
+                        GridD,
+                        orbital_precalc_temp);
+                    orbital_precalc = torch.stack({orbital_precalc, orbital_precalc_temp}, dim = 0);
+
+                    DeePKS_domain::cal_o_delta<TK, TH>(dm_bandgap[ir], *h_delta, o_delta(nks, ir), *ParaV, nks);
+                }
+
+                // save obase and orbital_precalc
+                const std::string file_orbpre = PARAM.globalv.global_out_dir + "deepks_orbpre.npy";
+                LCAO_deepks_io::save_tensor2npy<double>(file_orbpre, orbital_precalc, my_rank);
+
+                const std::string file_obase = PARAM.globalv.global_out_dir + "deepks_obase.npy";
+                LCAO_deepks_io::save_matrix2npy(file_obase, o_tot - o_delta, my_rank); // Unit: Ry
+            }                                                                          // end deepks_scf == 1
+            else                                                                       // deepks_scf == 0
+            {
+                const std::string file_obase = PARAM.globalv.global_out_dir + "deepks_obase.npy";
+                LCAO_deepks_io::save_matrix2npy(file_obase, o_tot, my_rank); // no scf, o_tot=o_base
+            }                                                                // end deepks_scf == 0
+        }                               
+
 
         // H(R) matrix part, not realized now
         if (true) // should be modified later!

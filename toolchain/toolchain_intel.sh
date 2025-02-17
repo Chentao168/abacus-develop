@@ -16,17 +16,17 @@
 ./install_abacus_toolchain.sh \
 --with-intel=system --math-mode=mkl \
 --with-gcc=no --with-intelmpi=system \
---with-cmake=install \
+--with-cmake=no \
 --with-scalapack=no \
 --with-libxc=install \
 --with-fftw=no \
 --with-elpa=install \
 --with-cereal=install \
---with-rapidjson=install \
---with-libtorch=no \
---with-libnpy=no \
---with-libri=no \
---with-libcomm=no \
+--with-rapidjson=no \
+--with-libtorch=install \
+--with-libnpy=install \
+--with-libri=install \
+--with-libcomm=install \
 --with-intel-classic=no \
 | tee compile.log
 # if you are using AMD server: set --with-intel-classic=yes

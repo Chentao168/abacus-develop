@@ -316,7 +316,7 @@ export intel_classic="no"
 # option: --with-intel-classic can change it to yes/no
 # zhaoqing by 2023.08
 export intelmpi_classic="no"
-export with_ifx="yes"
+export with_ifx="no"
 export GPUVER="no"
 export MPICH_DEVICE="ch4"
 export TARGET_CPU="native"
