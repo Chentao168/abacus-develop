@@ -43,7 +43,7 @@ void ReadInput::item_deepks()
     {
         Input_Item item("deepks_bandgap");
         item.annotation = ">0 for bandgap label";
-        read_sync_bool(input.deepks_bandgap);
+        read_sync_int(input.deepks_bandgap);
         this->add_item(item);
     }
     {
@@ -53,7 +53,7 @@ void ReadInput::item_deepks()
             para.input.deepks_band_range[0] = std::stod(item.str_values[0]);
             para.input.deepks_band_range[1] = std::stod(item.str_values[1]);
         };
-        sync_intvec(input.deepks_band_range, 3, 0);
+        sync_intvec(input.deepks_band_range, 2, 0);
         this->add_item(item);
     }
     {

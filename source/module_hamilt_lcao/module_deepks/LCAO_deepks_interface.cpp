@@ -274,14 +274,13 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
             for (int iks = 0; iks < nks; ++iks)
             {
                 // record band gap for each k point (including spin)
-                const double
                 for (int ib = 0; ib < range; ++ib)
                 {
                     if (ib + PARAM.inp.deepks_band_range[0] < -1)
                     {
                         o_tot(iks, ib) = ekb(iks, nocc + ib + PARAM.inp.deepks_band_range[0]) - ekb(iks, nocc - 1);
                     }
-                    if (ib > -1)
+                    if (ib + PARAM.inp.deepks_band_range[0] > -1)
                     {
                         o_tot(iks, ib - 1) = ekb(iks, nocc + ib + PARAM.inp.deepks_band_range[0]) - ekb(iks, nocc -1);
                     }
@@ -352,7 +351,8 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
 
                 for (int ir = 0; ir < range; ++ir)
                 {
-                    torch::Tensor orbital_precalc_temp
+                    torch::Tensor orbital_precalc_temp;
+                    ModuleBase::matrix o_delta_temp(nks, 1);
                     DeePKS_domain::cal_orbital_precalc<TK, TH>(dm_bandgap_range[ir],
                         lmaxd,
                         inlmax,
@@ -368,9 +368,20 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                         *ParaV,
                         GridD,
                         orbital_precalc_temp);
-                    orbital_precalc = torch.stack({orbital_precalc, orbital_precalc_temp}, dim = 0);
+                    if (ir == 0)
+                    {
+                        orbital_precalc = orbital_precalc_temp;
+                    }
+                    else
+                    {
+                        orbital_precalc = torch::cat({orbital_precalc, orbital_precalc_temp}, 0);
+                    }
 
-                    DeePKS_domain::cal_o_delta<TK, TH>(dm_bandgap[ir], *h_delta, o_delta(nks, ir), *ParaV, nks);
+                    DeePKS_domain::cal_o_delta<TK, TH>(dm_bandgap_range[ir], *h_delta, o_delta_temp, *ParaV, nks);
+                    for (int iks = 0; iks < nks; ++iks)
+                    {
+                        o_delta(iks, ir) = o_delta_temp(iks, 0);
+                    }
                 }
 
                 // save obase and orbital_precalc
