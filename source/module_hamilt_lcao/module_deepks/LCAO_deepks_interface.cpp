@@ -274,7 +274,7 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
             for (int iks = 0; iks < nks; ++iks)
             {
                 // record band gap for each k point (including spin)
-                for (int ib = 0; ib < range; ++ib)
+                for (int ib = 0; ib <= range; ++ib)
                 {
                     if (ib + PARAM.inp.deepks_band_range[0] < -1)
                     {
@@ -299,21 +299,24 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                 // Calculate O_delta
                 if constexpr (std::is_same<TK, double>::value) // for gamma only
                 {
-                    for (int ir = 0; ir < range; ++ir)
+                    for (int ir = 0; ir <= range; ++ir)
                     {
-                        wg_hl_range[ir].create(nspin, PARAM.inp.nbands);
-                        dm_bandgap_range[ir].resize(nspin);
                         for (int is = 0; is < nspin; ++is)
                         {
-                            wg_hl_range[ir].zero_out();
                             if (ir + PARAM.inp.deepks_band_range[0] < -1)
                             {
+                                wg_hl_range[ir].create(nspin, PARAM.inp.nbands);
+                                wg_hl_range[ir].zero_out();
+                                dm_bandgap_range[ir].resize(nspin);
                                 wg_hl_range[ir](is, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
                                 wg_hl_range[ir](is, nocc - 1) = -1.0;
                                 elecstate::cal_dm(ParaV, wg_hl_range[ir], psi, dm_bandgap_range[ir]);
                             }
                             if (ir + PARAM.inp.deepks_band_range[0] > -1)
                             {
+                                wg_hl_range[ir - 1].create(nspin, PARAM.inp.nbands);
+                                wg_hl_range[ir - 1].zero_out();
+                                dm_bandgap_range[ir - 1].resize(nspin);
                                 wg_hl_range[ir - 1](is, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
                                 wg_hl_range[ir - 1](is, nocc - 1) = -1.0;
                                 elecstate::cal_dm(ParaV, wg_hl_range[ir - 1], psi, dm_bandgap_range[ir - 1]);
@@ -323,21 +326,24 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                 }
                 else // for multi-k
                 {
-                    for (int ir = 0; ir < range; ++ir)
+                    for (int ir = 0; ir <= range; ++ir)
                     {
-                        wg_hl_range[ir].create(nks, PARAM.inp.nbands);
-                        dm_bandgap_range[ir].resize(nks);
                         for (int ik = 0; ik < nks; ik++)
                         {
-                            wg_hl_range[ir].zero_out();
                             if (ir + PARAM.inp.deepks_band_range[0] < -1)
                             {
+                                wg_hl_range[ir].create(nks, PARAM.inp.nbands);
+                                wg_hl_range[ir].zero_out();
+                                dm_bandgap_range[ir].resize(nks);
                                 wg_hl_range[ir](ik, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
                                 wg_hl_range[ir](ik, nocc - 1) = -1.0;
                                 elecstate::cal_dm(ParaV, wg_hl_range[ir], psi, dm_bandgap_range[ir]);
                             }
                             if (ir + PARAM.inp.deepks_band_range[0] > -1)
                             {
+                                wg_hl_range[ir - 1].create(nks, PARAM.inp.nbands);
+                                wg_hl_range[ir - 1].zero_out();
+                                dm_bandgap_range[ir - 1].resize(nks);
                                 wg_hl_range[ir - 1](ik, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
                                 wg_hl_range[ir - 1](ik, nocc - 1) = -1.0;
                                 elecstate::cal_dm(ParaV, wg_hl_range[ir - 1], psi, dm_bandgap_range[ir - 1]);
@@ -347,7 +353,7 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                 }
 
                 ModuleBase::matrix o_delta(nks, range);
-                torch::Tensor orbital_precalc;
+                torch::Tensor orbital_precalc_range;
 
                 for (int ir = 0; ir < range; ++ir)
                 {
@@ -370,11 +376,11 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                         orbital_precalc_temp);
                     if (ir == 0)
                     {
-                        orbital_precalc = orbital_precalc_temp;
+                        orbital_precalc_range = orbital_precalc_temp;
                     }
                     else
                     {
-                        orbital_precalc = torch::cat({orbital_precalc, orbital_precalc_temp}, 0);
+                        orbital_precalc_range = torch::cat({orbital_precalc_range, orbital_precalc_temp}, 0);
                     }
 
                     DeePKS_domain::cal_o_delta<TK, TH>(dm_bandgap_range[ir], *h_delta, o_delta_temp, *ParaV, nks);
@@ -386,7 +392,7 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
 
                 // save obase and orbital_precalc
                 const std::string file_orbpre = PARAM.globalv.global_out_dir + "deepks_orbpre.npy";
-                LCAO_deepks_io::save_tensor2npy<double>(file_orbpre, orbital_precalc, my_rank);
+                LCAO_deepks_io::save_tensor2npy<double>(file_orbpre, orbital_precalc_range, my_rank);
 
                 const std::string file_obase = PARAM.globalv.global_out_dir + "deepks_obase.npy";
                 LCAO_deepks_io::save_matrix2npy(file_obase, o_tot - o_delta, my_rank); // Unit: Ry
