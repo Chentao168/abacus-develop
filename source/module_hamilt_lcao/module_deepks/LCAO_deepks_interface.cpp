@@ -351,6 +351,31 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                         }
                     }
                 }
+                // 输出 wg_hl_range
+                std::cout << "wg_hl_range:" << std::endl;
+                for (const auto& mat : wg_hl_range)
+                {
+                    for (int i = 0; i < nks; ++i)
+                    {
+                        for (int j = 0; j < PARAM.inp.nbands; ++j)
+                        {
+                            std::cout << mat(i, j) << " ";
+                        }
+                        std::cout << std::endl;
+                    }
+                    std::cout << std::endl;
+                }
+
+                // 输出 dm_bandgap_range
+                std::cout << "dm_bandgap_range:" << std::endl;
+                for (const auto& vec : dm_bandgap_range)
+                {
+                    for (const auto& elem : vec)
+                    {
+                        std::cout << elem << " ";
+                    }
+                    std::cout << std::endl;
+                }
 
                 ModuleBase::matrix o_delta(nks, range);
                 torch::Tensor orbital_precalc_range;
@@ -383,10 +408,35 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                         orbital_precalc_range = torch::cat({orbital_precalc_range, orbital_precalc_temp}, 0);
                     }
 
+                    std::cout << orbital_precalc_range << std::endl;
+
                     DeePKS_domain::cal_o_delta<TK, TH>(dm_bandgap_range[ir], *h_delta, o_delta_temp, *ParaV, nks);
+
+                    // 输出 o_delta_temp
+                    std::cout << "o_delta_temp:" << std::endl;
+                    for (int i = 0; i < nks; ++i)
+                    {
+                        for (int j = 0; j < 1; ++j)
+                        {
+                            std::cout << o_delta_temp(i, j) << " ";
+                        }
+                        std::cout << std::endl;
+                    }
+
                     for (int iks = 0; iks < nks; ++iks)
                     {
                         o_delta(iks, ir) = o_delta_temp(iks, 0);
+                    }
+
+                    // 输出 o_delta
+                    std::cout << "o_delta:" << std::endl;
+                    for (int i = 0; i < nks; ++i)
+                    {
+                        for (int j = 0; j < range; ++j)
+                        {
+                            std::cout << o_delta(i, j) << " ";
+                        }
+                        std::cout << std::endl;
                     }
                 }
 
