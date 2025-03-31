@@ -301,26 +301,29 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                 {
                     for (int ir = 0; ir <= range; ++ir)
                     {
-                        for (int is = 0; is < nspin; ++is)
+                        if (ir + PARAM.inp.deepks_band_range[0] < -1)
                         {
-                            if (ir + PARAM.inp.deepks_band_range[0] < -1)
+                            wg_hl_range[ir].create(nspin, PARAM.inp.nbands);
+                            wg_hl_range[ir].zero_out();
+                            dm_bandgap_range[ir].resize(nspin);
+                            for (int is = 0; is < nspin; ++is)
                             {
-                                wg_hl_range[ir].create(nspin, PARAM.inp.nbands);
-                                wg_hl_range[ir].zero_out();
-                                dm_bandgap_range[ir].resize(nspin);
                                 wg_hl_range[ir](is, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
                                 wg_hl_range[ir](is, nocc - 1) = -1.0;
-                                elecstate::cal_dm(ParaV, wg_hl_range[ir], psi, dm_bandgap_range[ir]);
                             }
-                            if (ir + PARAM.inp.deepks_band_range[0] > -1)
+                            elecstate::cal_dm(ParaV, wg_hl_range[ir], psi, dm_bandgap_range[ir]);
+                        }
+                        if (ir + PARAM.inp.deepks_band_range[0] > -1)
+                        {
+                            wg_hl_range[ir - 1].create(nspin, PARAM.inp.nbands);
+                            wg_hl_range[ir - 1].zero_out();
+                            dm_bandgap_range[ir - 1].resize(nspin);
+                            for (int is = 0; is < nspin; ++is)
                             {
-                                wg_hl_range[ir - 1].create(nspin, PARAM.inp.nbands);
-                                wg_hl_range[ir - 1].zero_out();
-                                dm_bandgap_range[ir - 1].resize(nspin);
                                 wg_hl_range[ir - 1](is, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
                                 wg_hl_range[ir - 1](is, nocc - 1) = -1.0;
-                                elecstate::cal_dm(ParaV, wg_hl_range[ir - 1], psi, dm_bandgap_range[ir - 1]);
                             }
+                            elecstate::cal_dm(ParaV, wg_hl_range[ir - 1], psi, dm_bandgap_range[ir - 1]);
                         }
                     }
                 }
@@ -328,53 +331,31 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                 {
                     for (int ir = 0; ir <= range; ++ir)
                     {
-                        for (int ik = 0; ik < nks; ik++)
+                        if (ir + PARAM.inp.deepks_band_range[0] < -1)
                         {
-                            if (ir + PARAM.inp.deepks_band_range[0] < -1)
+                            wg_hl_range[ir].create(nks, PARAM.inp.nbands);
+                            wg_hl_range[ir].zero_out();
+                            dm_bandgap_range[ir].resize(nks);
+                            for (int ik = 0; ik < nks; ik++)
                             {
-                                wg_hl_range[ir].create(nks, PARAM.inp.nbands);
-                                wg_hl_range[ir].zero_out();
-                                dm_bandgap_range[ir].resize(nks);
                                 wg_hl_range[ir](ik, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
                                 wg_hl_range[ir](ik, nocc - 1) = -1.0;
-                                elecstate::cal_dm(ParaV, wg_hl_range[ir], psi, dm_bandgap_range[ir]);
                             }
-                            if (ir + PARAM.inp.deepks_band_range[0] > -1)
+                            elecstate::cal_dm(ParaV, wg_hl_range[ir], psi, dm_bandgap_range[ir]);
+                        }
+                        if (ir + PARAM.inp.deepks_band_range[0] > -1)
+                        {
+                            wg_hl_range[ir - 1].create(nks, PARAM.inp.nbands);
+                            wg_hl_range[ir - 1].zero_out();
+                            dm_bandgap_range[ir - 1].resize(nks);
+                            for (int ik = 0; ik < nks; ik++)
                             {
-                                wg_hl_range[ir - 1].create(nks, PARAM.inp.nbands);
-                                wg_hl_range[ir - 1].zero_out();
-                                dm_bandgap_range[ir - 1].resize(nks);
                                 wg_hl_range[ir - 1](ik, nocc + ir + PARAM.inp.deepks_band_range[0]) = 1.0;
                                 wg_hl_range[ir - 1](ik, nocc - 1) = -1.0;
-                                elecstate::cal_dm(ParaV, wg_hl_range[ir - 1], psi, dm_bandgap_range[ir - 1]);
                             }
+                            elecstate::cal_dm(ParaV, wg_hl_range[ir - 1], psi, dm_bandgap_range[ir - 1]);
                         }
                     }
-                }
-                // 输出 wg_hl_range
-                std::cout << "wg_hl_range:" << std::endl;
-                for (const auto& mat : wg_hl_range)
-                {
-                    for (int i = 0; i < nks; ++i)
-                    {
-                        for (int j = 0; j < PARAM.inp.nbands; ++j)
-                        {
-                            std::cout << mat(i, j) << " ";
-                        }
-                        std::cout << std::endl;
-                    }
-                    std::cout << std::endl;
-                }
-
-                // 输出 dm_bandgap_range
-                std::cout << "dm_bandgap_range:" << std::endl;
-                for (const auto& vec : dm_bandgap_range)
-                {
-                    for (const auto& elem : vec)
-                    {
-                        std::cout << elem << " ";
-                    }
-                    std::cout << std::endl;
                 }
 
                 ModuleBase::matrix o_delta(nks, range);
@@ -408,35 +389,10 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
                         orbital_precalc_range = torch::cat({orbital_precalc_range, orbital_precalc_temp}, 0);
                     }
 
-                    std::cout << orbital_precalc_range << std::endl;
-
                     DeePKS_domain::cal_o_delta<TK, TH>(dm_bandgap_range[ir], *h_delta, o_delta_temp, *ParaV, nks);
-
-                    // 输出 o_delta_temp
-                    std::cout << "o_delta_temp:" << std::endl;
-                    for (int i = 0; i < nks; ++i)
-                    {
-                        for (int j = 0; j < 1; ++j)
-                        {
-                            std::cout << o_delta_temp(i, j) << " ";
-                        }
-                        std::cout << std::endl;
-                    }
-
                     for (int iks = 0; iks < nks; ++iks)
                     {
                         o_delta(iks, ir) = o_delta_temp(iks, 0);
-                    }
-
-                    // 输出 o_delta
-                    std::cout << "o_delta:" << std::endl;
-                    for (int i = 0; i < nks; ++i)
-                    {
-                        for (int j = 0; j < range; ++j)
-                        {
-                            std::cout << o_delta(i, j) << " ";
-                        }
-                        std::cout << std::endl;
                     }
                 }
 
@@ -454,7 +410,85 @@ void LCAO_Deepks_Interface<TK, TR>::out_deepks_labels(const double& etot,
             }                                                                // end deepks_scf == 0
         }                               
 
+        if (PARAM.inp.deepks_bandgap == 3)
+        {
+            const int nocc = (PARAM.inp.nelec + 1) / 2;
+            ModuleBase::matrix o_tot(nks, 1);
+            for (int iks = 0; iks < nks; ++iks)
+            {
+                // record band gap for each k point (including spin)
+                o_tot(iks, 0) = ekb(iks, nocc + PARAM.inp.deepks_band_range[1]) - ekb(iks, nocc + PARAM.inp.deepks_band_range[0]);
+            }
 
+            const std::string file_otot = PARAM.globalv.global_out_dir + "deepks_otot.npy";
+            LCAO_deepks_io::save_matrix2npy(file_otot, o_tot, my_rank); // Unit: Ry
+
+            if (PARAM.inp.deepks_scf)
+            {
+                ModuleBase::matrix wg_hl;
+                std::vector<TH> dm_bandgap;
+
+                // Calculate O_delta
+                if constexpr (std::is_same<TK, double>::value) // for gamma only
+                {
+                    wg_hl.create(nspin, PARAM.inp.nbands);
+                    dm_bandgap.resize(nspin);
+                    for (int is = 0; is < nspin; ++is)
+                    {
+                        wg_hl.zero_out();
+                        wg_hl(is, nocc + PARAM.inp.deepks_band_range[0]) = -1.0;
+                        wg_hl(is, nocc + PARAM.inp.deepks_band_range[1]) = 1.0;
+                        elecstate::cal_dm(ParaV, wg_hl, psi, dm_bandgap);
+                    }
+                }
+                else // for multi-k
+                {
+                    wg_hl.create(nks, PARAM.inp.nbands);
+                    dm_bandgap.resize(nks);
+                    wg_hl.zero_out();
+                    for (int ik = 0; ik < nks; ik++)
+                    {
+                        wg_hl(ik, nocc + PARAM.inp.deepks_band_range[0]) = -1.0;
+                        wg_hl(ik, nocc + PARAM.inp.deepks_band_range[1]) = 1.0;
+                    }
+                    elecstate::cal_dm(ParaV, wg_hl, psi, dm_bandgap);
+                }
+
+                ModuleBase::matrix o_delta(nks, 1);
+
+                // calculate and save orbital_precalc: [nks,NAt,NDscrpt]
+                torch::Tensor orbital_precalc;
+                DeePKS_domain::cal_orbital_precalc<TK, TH>(dm_bandgap,
+                                                           lmaxd,
+                                                           inlmax,
+                                                           nat,
+                                                           nks,
+                                                           inl_l,
+                                                           kvec_d,
+                                                           phialpha,
+                                                           gevdm,
+                                                           inl_index,
+                                                           ucell,
+                                                           orb,
+                                                           *ParaV,
+                                                           GridD,
+                                                           orbital_precalc);
+                DeePKS_domain::cal_o_delta<TK, TH>(dm_bandgap, *h_delta, o_delta, *ParaV, nks);
+
+                // save obase and orbital_precalc
+                const std::string file_orbpre = PARAM.globalv.global_out_dir + "deepks_orbpre.npy";
+                LCAO_deepks_io::save_tensor2npy<double>(file_orbpre, orbital_precalc, my_rank);
+
+                const std::string file_obase = PARAM.globalv.global_out_dir + "deepks_obase.npy";
+                LCAO_deepks_io::save_matrix2npy(file_obase, o_tot - o_delta, my_rank); // Unit: Ry
+            }                                                                          // end deepks_scf == 1
+            else                                                                       // deepks_scf == 0
+            {
+                const std::string file_obase = PARAM.globalv.global_out_dir + "deepks_obase.npy";
+                LCAO_deepks_io::save_matrix2npy(file_obase, o_tot, my_rank); // no scf, o_tot=o_base
+            }                                                                // end deepks_scf == 0
+        }                                                                    // end bandgap label
+        
         // H(R) matrix part, not realized now
         if (true) // should be modified later!
         {
